@@ -247,10 +247,6 @@ tokens <- tokens(
 colls <- textstat_collocations(tokens)
 head(colls, 20)
 
-#three word collocations, do we see trends?
-#coll3 <- textstat_collocations(tokens, tolower = FALSE, size = 3)
-#head(coll3, 30)
-
 #how is gun talked about
 gun1 <- kwic(my_corp, "gun*", window = 10)
 head(gun1, 20)
@@ -262,17 +258,12 @@ View(env1)
 env2 <- kwic(my_corp, "climate*", window = 8)
 View(env2)
 
-#env3 <- kwic(my_corp, "natural", window =8)
-#View(env3)
-
-#if we want to look at a phrase used in corpus
-phrase1 <- kwic(tokens, phrase("gun violence"))
-
-phrase2 <- kwic(tokens, phrase("climate change"))
-
 #or if we want to look at all phrases that come up in our colloc
-#phrases <- phrase("XXXX", "YYYY")
-#toks <- tokens_compound(tokens, phrases)
+
+phrases <- phrase(c("gun violence", "gun safety", "common sense", "prevent gun*","commonsense gun", "senseless gun*", "gun lobby", "gun storage", "gunviolence prevention", "unsecured gun*", "gun*"))
+
+toks <- tokens_compound(tokens, phrases)
+
 ```
 
 
@@ -297,8 +288,8 @@ corp_env <- corpus(env_df)
 summary(corp_env)
 
 #we can look at collocations by gun or env segment:
-#guns_wording <- textstat_collocations(corp_guns, size = 2)
-#env_wording <- textstat_collocations(corp_env, size = 4)
+guns_wording <- textstat_collocations(corp_guns, size = 2)
+env_wording <- textstat_collocations(corp_env, size = 4)
 
 #on to a dfm
 dfm <- dfm(my_corp, remove = stopwords("english"), 
@@ -329,31 +320,30 @@ ntoken(dfm_party) # words on each side
 Creating dictionary for Guns
 ```{r}
 
-#Dictionary using collocations list
+#Dictionary creation
 
-guns_dic1 <- dictionary(list(guns = c('gun*violence', 'gun*safety', 'sense', 'prevent','commonsense*gun', 'senseless*gun', 'gun*lobby', 'gun*storage', 'gunviolence*prevention', 'unsecured*gun', 'gun*')))
+guns_dic1 <- dictionary(list(guns = phrase(c("gun violence", "gun*safety", "common*sense", "prevent gun*","commonsense*gun", "senseless*gun*", "gun*lobby", "gun*storage", "gunviolence*prevention", "unsecured*gun*", "gun*"))))
                                      
 #check party dfm against new dictionary
 dfm_party_dic <- dfm(dfm_new, dictionary = guns_dic1, group = "Party")
-View(dfm_party_dic)
+
 
 individ_guns <- dfm(dfm_new, dictionary = guns_dic1, group = "screen_name")
-View(individ_guns)
+
+
 ```
 
-Climate Change Dictionary Bit
+Environment Dictionary 
 
 ```{r}
-envi_dic <- dictionary(list(envi = c('climate*','environmental*protection', 'environmental*resources', 'the*arctic', 'natural*resources', 'interior', 'EPA', 'climate*', 'natural*disaster', 'natural*gas')))
+envi_dic <- dictionary(list(envi = phrase(c('climate*','environmental*protection', 'environmental*resources', 'the*arctic', 'natural*resources', 'interior', 'EPA', 'climate*', 'natural*disaster', 'natural*gas'))))
                                      
 #check party dfm against new dictionary
-dfm_envi_dic <- dfm(dfm, dictionary = envi_dic, group = "Party")
+dfm_envi_dic <- dfm(dfm_new, dictionary = envi_dic, group = "Party")
 
-View(dfm_envi_dic)
 
-dfm_individ <- dfm(dfm, group = "screen_name", dictionary = envi_dic)
+dfm_individ <- dfm(dfm_new, group = "screen_name", dictionary = envi_dic)
 
-View(dfm_individ)
 ```
 
 ```{r}
@@ -529,38 +519,8 @@ twitter_plot2 <- ggplot(features_dfm_tweets, aes(x = feature, y = frequency)) +
 
 ```
 
-```{r}
-library(rtweet)
-library(igraph)
-library(hrbrthemes)
-library(ggraph)
-library(tidyverse)
-
-tmls <- read_csv("tmls.csv")
-
-filter(tmls, retweet_count > 0) %>% 
-  select(screen_name, mentions_screen_name) %>%
-  unnest(mentions_screen_name) %>% 
-  filter(!is.na(mentions_screen_name)) %>% 
-  graph_from_data_frame() -> rt_g
-
-V(rt_g)$node_label <- unname(ifelse(degree(rt_g)[V(rt_g)] > 20, names(V(rt_g)), "")) 
-V(rt_g)$node_size <- unname(ifelse(degree(rt_g)[V(rt_g)] > 20, degree(rt_g), 0)) 
-
-twitter_plot <- ggraph(rt_g, layout = 'linear', circular = TRUE) + 
-  geom_edge_arc(edge_width=0.125, aes(alpha=..index..)) +
-  geom_node_label(aes(label=node_label, size=node_size),
-                  label.size=0, fill="#ffffff66", segment.colour="springgreen",
-                  color="slateblue", repel=TRUE, fontface="bold") +
-  coord_fixed() +
-  scale_size_area(trans="sqrt") +
-  labs(title="Retweet Relationships", subtitle="Most retweeted screen names labeled. Darkers edges == more retweets. Node size == larger degree")
-
-twitter_plot
-```
-
 ```{r echo=TRUE, message=FALSE, warning=FALSE, paged.print=FALSE, results = "asis"}
-
+library(stargazer)
 #data frame matrix from applying gun dictionary and convert to data frame
 
 individ_guns_final <- as.data.frame(
@@ -581,14 +541,24 @@ individ_env_final <- as.data.frame(
   check.names = FALSE
 )
 
+#merge both of these files to have gun and env counts
+
+TWITTER_ANALYSIS <- merge(x = individ_guns_final, y = individ_env_final, by = "congress_id_handles.TweetCongress", all = FALSE)
+
+
+#merge twitter counts with our lobby amount totals, based on common congressmen ID (twitter handle)
+
+FINAL_GUN_ANALYSIS <- merge(x = TWITTER_ANALYSIS, y = df_money_gun_peryear, by = "congress_id_handles.TweetCongress", all = FALSE)
+
+FINAL_ENV_ANALYSIS <- merge(x = TWITTER_ANALYSIS, y = df_money_env_peryear, by = "congress_id_handles.TweetCongress", all = FALSE)
 
 #Calculating basic regression model to test correlation of our hypothesis 
 #GUN
-reg_basic <- lm(twitter ~ amount + issue_code, df_money_gun_peryear)
+reg_basic <- lm(guns ~ Total + report_year.x + congress_id_handles.TweetCongress, FINAL_GUN_ANALYSIS)
 stargazer(reg_basic, type ="html")
 
 #ENVIRONMENT
-reg_basic2 <- lm(twitter ~ amount + issue_code, df_money_env_peryear)
+reg_basic2 <- lm(envi ~ Total + issue_code + report_year.x + congress_id_handles.TweetCongress, FINAL_ENV_ANALYSIS)
 stargazer(reg_basic2, type ="html")
 
 ```
